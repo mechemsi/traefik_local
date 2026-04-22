@@ -25,8 +25,23 @@ cp /home/domas/traefik/snippets/traefik.mk \
 
 Open the override and rename the service key `app:` to match the service in
 your base compose file. For example, if your base file has `web:`, change it
-to `web:`. Everything else can stay as-is — the labels use `${APP_NAME}` /
-`${APP_HOST}` / `${APP_PORT}` which are provided by `traefik.mk`.
+to `web:`.
+
+The hub's Docker provider is configured with
+`--providers.docker.defaultRule=Host(`{{ normalize .Name }}.localhost`)`, so
+any container with `traefik.enable=true` on the `proxy` network is
+automatically reachable at `<container-name>.localhost`. The override only
+needs three labels:
+
+- `traefik.enable=true`
+- `traefik.docker.network=proxy`
+- `traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}`
+  (Traefik can't guess the upstream port when a container exposes several.)
+
+No explicit router `rule=` is required. If you want a hostname different
+from the container name (custom domain, extra aliases), uncomment the
+`routers.${APP_NAME}.rule=Host(...)` and `.entrypoints=web` lines in the
+template.
 
 ### 3. Wire `traefik.mk` into your Makefile
 
@@ -81,6 +96,56 @@ override only gets layered on when the hub is up. That means:
   will route through the internal network regardless, and a published host
   port doesn't hurt.
 
+## Multiple services in one project
+
+The single-service template assumes one router/service per compose project.
+For a project with several web-facing services, skip `traefik.mk`'s
+`APP_NAME` plumbing for the override and write it by hand.
+
+To share common labels across services, use compose's **map-form** `labels:`
+block together with a YAML merge-key (`<<:`). The sequence form (`labels: -
+key=value`) does not merge cleanly because splatting an anchored sequence
+into a sequence produces a nested list, which compose rejects with
+`unexpected type []interface {}`. Map form avoids the whole problem:
+
+```yaml
+# docker-compose.traefik.yml
+x-traefik-common: &traefik-common
+  traefik.enable: "true"
+  traefik.docker.network: proxy
+
+services:
+  web:
+    labels:
+      <<: *traefik-common
+      traefik.http.services.web.loadbalancer.server.port: "3000"
+    networks: [proxy, default]
+
+  api:
+    labels:
+      <<: *traefik-common
+      traefik.http.services.api.loadbalancer.server.port: "8080"
+      # Override the auto hostname (defaults to <container-name>.localhost):
+      traefik.http.routers.api.rule: "Host(`api.myproject.localhost`)"
+      traefik.http.routers.api.entrypoints: web
+    networks: [proxy, default]
+
+  pgadmin:
+    labels:
+      <<: *traefik-common
+      traefik.http.services.pgadmin.loadbalancer.server.port: "80"
+    networks: [proxy, default]
+
+networks:
+  proxy:
+    external: true
+```
+
+Each service keeps its per-router and per-service labels explicit; only the
+enable + network labels are shared via `<<: *traefik-common`. Quote numeric
+and boolean values (`"true"`, `"3000"`) — YAML would otherwise convert them,
+and Traefik labels are strings. Router names must be unique per project.
+
 ## Pitfalls
 
 - **Service name mismatch.** If you forget to rename `app:` in the override,
@@ -93,7 +158,3 @@ override only gets layered on when the hub is up. That means:
   points at the right port.
 - **Missing `proxy` network.** Run `make network` in the hub repo once per
   machine, or add `docker network create proxy` to your own bootstrap.
-- **Multiple services.** Repeat the labels block once per service in the
-  override, each with a unique `APP_NAME`-derived router name. For
-  multi-service projects it is often cleanest to write the override by hand
-  rather than reusing the single-service template verbatim.
