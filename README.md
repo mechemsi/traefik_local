@@ -21,6 +21,9 @@ Juggling local ports across many projects gets old. With the hub running:
   browsers (Chrome, Firefox, Edge) per RFC 6761 — no `/etc/hosts` edits.
   On Windows 11, make sure the host is patched past the Nov 2025
   cumulative rollup to avoid the KB5066835 loopback HTTP/2 regression.
+- `*.localhost` is served over HTTPS with a locally-trusted mkcert
+  cert; HTTP auto-redirects to HTTPS. See
+  [`docs/https.md`](docs/https.md).
 
 ## Quickstart
 
@@ -49,6 +52,19 @@ Paste your hash in place of the placeholder, **doubling every `$`**.
 docker-compose uses `$` for variable expansion, so an htpasswd output of
 `$2y$05$abc...` must be written as `$$2y$$05$$abc...`. Leave the
 `admin:` prefix as-is.
+
+### First-time setup: TLS certs
+
+Before the first `make up`, generate the local wildcard cert:
+
+```bash
+make certs
+```
+
+`make up` refuses to start if the cert files are missing. The full
+procedure — installing mkcert, sharing the CA between Windows and WSL,
+and Firefox specifics — is in [`docs/https.md`](docs/https.md). Run that
+once per machine.
 
 ### Bring it up
 
@@ -94,9 +110,12 @@ override is evaluated at up-time, not runtime).
 - **Container up but `*.localhost` 404s** — check labels with
   `docker inspect <container> | grep traefik` and confirm the container is on
   the `proxy` network (`make status`).
+- **Cert not trusted** — see [`docs/https.md`](docs/https.md) one-time
+  setup. The CA has to be installed in both Windows and WSL.
 
 ## Scope
 
-This repo is deliberately small: HTTP only, local-only, no auth, no
-middleware chains. See the approved plan in the project history if you want
-to extend it (HTTPS via mkcert was explicitly deferred).
+This repo is deliberately small: local-only, minimal middleware chains.
+HTTPS via mkcert is wired in (see [`docs/https.md`](docs/https.md));
+HTTP requests auto-redirect to HTTPS. No auth on consumer routers by
+default. Everything stays local-only.

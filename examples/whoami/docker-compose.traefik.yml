@@ -9,7 +9,8 @@ services:
       - traefik.enable=true
       - traefik.docker.network=proxy
       - traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)
-      - traefik.http.routers.${APP_NAME}.entrypoints=web
+      # No `entrypoints=...` label: the router attaches to all entrypoints
+      # and the hub's entrypoint-level redirect handles HTTP → HTTPS.
       - traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}
     networks:
       - proxy
