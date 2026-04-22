@@ -1,0 +1,36 @@
+# ~/traefik/docker-compose.yml
+services:
+  traefik:
+    image: traefik:v3.6.13
+    container_name: traefik
+    restart: unless-stopped
+    user: "0:0"
+    group_add:
+      - "1001"
+    command:
+      # --- Provider: Docker ---
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false   # only route explicitly labeled services
+      - --providers.docker.network=proxy             # always use the shared network
+      # --- Entrypoints ---
+      - --entrypoints.web.address=:80
+      # --- Dashboard ---
+      - --api.dashboard=true
+      - --api.insecure=true                          # dashboard on port 8080 (local dev only!)
+    ports:
+      - "80:80"       # HTTP traffic
+      - "8080:8080"   # Traefik dashboard (direct access fallback)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - proxy
+    labels:
+      # Expose the dashboard via Traefik itself at traefik.localhost
+      - traefik.enable=true
+      - traefik.http.routers.dashboard.rule=Host(`traefik.localhost`)
+      - traefik.http.routers.dashboard.service=api@internal
+      - traefik.http.routers.dashboard.entrypoints=web
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,22 @@
+# Local Claude config (machine-specific)
+.claude/
+
+# Environment files (may contain secrets)
+.env
+.env.*
+!.env.example
+
+# Local-only compose overrides
+*.local.yml
+docker-compose.override.yml
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor cruft
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

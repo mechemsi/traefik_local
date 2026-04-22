@@ -1,0 +1,25 @@
+# docker-compose.traefik.yml — Traefik overlay for consumer projects.
+#
+# This file is applied on top of the base docker-compose.yml when the hub is
+# running. It adds Traefik labels and attaches the service to the shared
+# `proxy` network. The variables ${APP_NAME}, ${APP_HOST}, and ${APP_PORT}
+# are exported by traefik.mk.
+#
+# Rename the `app:` key below to match the service name in your base compose
+# file.
+
+services:
+  app:
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)
+      - traefik.http.routers.${APP_NAME}.entrypoints=web
+      - traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}
+    networks:
+      - proxy
+      - default
+
+networks:
+  proxy:
+    external: true
