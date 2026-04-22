@@ -30,28 +30,25 @@ Juggling local ports across many projects gets old. With the hub running:
 ### First-time setup: dashboard password
 
 The dashboard at `traefik.localhost` is protected by BasicAuth. Before the
-first `make up`, generate a bcrypt hash for the `admin` user and paste it
-into `docker-compose.yml`.
+first `make up`, put a bcrypt hash in `.env`.
 
 ```bash
 # On Debian/Ubuntu/WSL, htpasswd comes from apache2-utils:
 sudo apt install apache2-utils
 
-htpasswd -nB admin
-# Example output:
-#   admin:$2y$05$Abc...xyz
+cp .env.example .env
+htpasswd -nB admin            # copy the output
+$EDITOR .env                  # paste it into DASHBOARD_AUTH, doubling every $
 ```
 
-In `docker-compose.yml`, find the line:
+Example: an `htpasswd` output of `admin:$2y$05$abc...` becomes
+`DASHBOARD_AUTH=admin:$$2y$$05$$abc...` in `.env`. The doubling is
+required because docker compose runs variable interpolation on
+`.env` values — a bare `$2y` would be read as an unset variable and
+silently dropped. `.env` is gitignored, so your hash never enters git.
 
-```
-- traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$2y$$05$$PLACEHOLDER_REPLACE_ME
-```
-
-Paste your hash in place of the placeholder, **doubling every `$`**.
-docker-compose uses `$` for variable expansion, so an htpasswd output of
-`$2y$05$abc...` must be written as `$$2y$$05$$abc...`. Leave the
-`admin:` prefix as-is.
+`make up` will fail fast with a helpful message if `DASHBOARD_AUTH`
+isn't set.
 
 ### First-time setup: TLS certs
 

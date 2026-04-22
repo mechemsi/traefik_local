@@ -15,6 +15,7 @@ help:
 	@echo "  make restart   Restart Traefik"
 	@echo "  make logs      Tail Traefik logs"
 	@echo "  make status    Show hub status and routed apps"
+	@echo "  make lint      Validate every compose file in the repo"
 	@echo ""
 	@echo "Dashboard: https://traefik.localhost (when up)"
 
@@ -73,3 +74,12 @@ status:
 	@echo "Containers labeled for Traefik on network '$(NETWORK)':"
 	@docker ps --filter "network=$(NETWORK)" --filter "label=traefik.enable=true" \
 	  --format '  - {{.Names}}  ({{.Image}})' || true
+
+.PHONY: lint
+lint:
+	@echo "Linting hub compose..."
+	@DASHBOARD_AUTH=lint-placeholder $(COMPOSE) -f docker-compose.yml config --quiet
+	@echo "Linting example: whoami..."
+	@cd examples/whoami && APP_NAME=whoami APP_HOST=whoami.localhost APP_PORT=80 \
+	  docker compose -f docker-compose.yml -f docker-compose.traefik.yml config --quiet
+	@echo "All compose files parse cleanly."
