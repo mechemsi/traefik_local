@@ -12,24 +12,31 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedByDefault=false   # only route explicitly labeled services
       - --providers.docker.network=proxy             # always use the shared network
+      - --providers.docker.defaultRule=Host(`{{ normalize .Name }}.localhost`)
       # --- Entrypoints ---
       - --entrypoints.web.address=:80
+      # --- Logs ---
+      - --log.level=INFO
+      - --accesslog=true
+      - --accesslog.format=json
+      - --accesslog.filters.statuscodes=400-599
+      - --accesslog.filters.minduration=100ms
       # --- Dashboard ---
       - --api.dashboard=true
-      - --api.insecure=true                          # dashboard on port 8080 (local dev only!)
     ports:
       - "80:80"       # HTTP traffic
-      - "8080:8080"   # Traefik dashboard (direct access fallback)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - proxy
     labels:
-      # Expose the dashboard via Traefik itself at traefik.localhost
+      # Expose the dashboard via Traefik itself at traefik.localhost (BasicAuth-protected)
       - traefik.enable=true
       - traefik.http.routers.dashboard.rule=Host(`traefik.localhost`)
       - traefik.http.routers.dashboard.service=api@internal
       - traefik.http.routers.dashboard.entrypoints=web
+      - traefik.http.routers.dashboard.middlewares=dashboard-auth@docker
+      - traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$2y$$05$$PLACEHOLDER_REPLACE_ME
 
 networks:
   proxy:

@@ -11,11 +11,46 @@ Juggling local ports across many projects gets old. With the hub running:
 
 - `myapi.localhost`, `web.localhost`, `db-admin.localhost`, ... instead of
   `:3000`, `:3001`, `:5050`.
+- `<container-name>.localhost` is assigned automatically to every labeled
+  container via Traefik's `defaultRule` — no explicit `Host()` rule needed
+  unless you want a non-default name.
 - Consumer projects need zero Traefik knowledge in their base compose file.
 - Turn the hub off and everything still works via plain ports — same
   containers, same compose.
+- The `.localhost` TLD resolves to loopback automatically in modern
+  browsers (Chrome, Firefox, Edge) per RFC 6761 — no `/etc/hosts` edits.
+  On Windows 11, make sure the host is patched past the Nov 2025
+  cumulative rollup to avoid the KB5066835 loopback HTTP/2 regression.
 
 ## Quickstart
+
+### First-time setup: dashboard password
+
+The dashboard at `traefik.localhost` is protected by BasicAuth. Before the
+first `make up`, generate a bcrypt hash for the `admin` user and paste it
+into `docker-compose.yml`.
+
+```bash
+# On Debian/Ubuntu/WSL, htpasswd comes from apache2-utils:
+sudo apt install apache2-utils
+
+htpasswd -nB admin
+# Example output:
+#   admin:$2y$05$Abc...xyz
+```
+
+In `docker-compose.yml`, find the line:
+
+```
+- traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$2y$$05$$PLACEHOLDER_REPLACE_ME
+```
+
+Paste your hash in place of the placeholder, **doubling every `$`**.
+docker-compose uses `$` for variable expansion, so an htpasswd output of
+`$2y$05$abc...` must be written as `$$2y$$05$$abc...`. Leave the
+`admin:` prefix as-is.
+
+### Bring it up
 
 ```bash
 make network      # create the shared 'proxy' docker network
@@ -59,8 +94,6 @@ override is evaluated at up-time, not runtime).
 - **Container up but `*.localhost` 404s** — check labels with
   `docker inspect <container> | grep traefik` and confirm the container is on
   the `proxy` network (`make status`).
-- **Dashboard is open to the world** — the hub uses `--api.insecure=true`
-  which is fine on a dev laptop but never on a shared or public host.
 
 ## Scope
 

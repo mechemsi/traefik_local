@@ -13,8 +13,15 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=proxy
-      - traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)
-      - traefik.http.routers.${APP_NAME}.entrypoints=web
+      # Routing hostname:
+      # The hub synthesizes `Host(`<container-name>.localhost`)` for every
+      # labeled container via the Docker provider's defaultRule. If your
+      # compose service / container name already matches the hostname you
+      # want, routing just works — no `rule=` label needed here.
+      #
+      # To override (e.g. custom domain, multiple hostnames), uncomment:
+      # - traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)
+      # - traefik.http.routers.${APP_NAME}.entrypoints=web
       - traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}
     networks:
       - proxy

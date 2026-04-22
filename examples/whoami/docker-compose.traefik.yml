@@ -1,3 +1,8 @@
+# The hub's defaultRule would route this container at
+# `whoami-example.localhost` (the container_name). The example keeps an
+# explicit Host rule so the documented URL — `whoami.localhost` — stays
+# stable regardless of container_name. Your own projects typically won't
+# need this; see snippets/docker-compose.traefik.yml.
 services:
   whoami:
     labels:
