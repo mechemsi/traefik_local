@@ -9,24 +9,46 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  make network   Create the shared '$(NETWORK)' docker network (idempotent)"
-	@echo "  make up        Ensure network, then bring Traefik up"
+	@echo "  make certs     Generate local HTTPS certs via mkcert (./certs/)"
+	@echo "  make up        Ensure network + certs, then bring Traefik up"
 	@echo "  make down      Stop Traefik"
 	@echo "  make restart   Restart Traefik"
 	@echo "  make logs      Tail Traefik logs"
 	@echo "  make status    Show hub status and routed apps"
 	@echo ""
-	@echo "Dashboard: http://traefik.localhost (when up)"
+	@echo "Dashboard: https://traefik.localhost (when up)"
 
 .PHONY: network
 network:
 	@docker network inspect $(NETWORK) >/dev/null 2>&1 \
 	  || docker network create $(NETWORK)
 
+.PHONY: certs
+certs:
+	@command -v mkcert >/dev/null 2>&1 || { \
+	  echo "mkcert not found on PATH."; \
+	  echo "Install: 'sudo apt install mkcert' (Debian/Ubuntu) — see docs/https.md."; \
+	  echo "After install, run 'mkcert -install' once (modifies system trust store)."; \
+	  exit 1; \
+	}
+	@mkdir -p certs
+	mkcert -cert-file certs/localhost.pem -key-file certs/localhost-key.pem localhost "*.localhost" 127.0.0.1 ::1
+	@echo ""
+	@echo "Certs written to ./certs/. Remember: 'mkcert -install' once for browser trust."
+
+.PHONY: check-certs
+check-certs:
+	@if [ ! -f certs/localhost.pem ] || [ ! -f certs/localhost-key.pem ]; then \
+	  echo "Missing certs at ./certs/localhost.pem or ./certs/localhost-key.pem."; \
+	  echo "Run 'make certs' to generate them (see docs/https.md)."; \
+	  exit 1; \
+	fi
+
 .PHONY: up
-up: network
+up: network check-certs
 	$(COMPOSE) up -d
 	@echo ""
-	@echo "Dashboard: http://traefik.localhost"
+	@echo "Dashboard: https://traefik.localhost"
 
 .PHONY: down
 down:
