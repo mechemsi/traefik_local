@@ -76,7 +76,18 @@ Other targets: `make down`, `make logs`, `make status`, `make restart`.
 ## Adding a project to the hub
 
 See [`docs/integrating-a-project.md`](docs/integrating-a-project.md) for the
-step-by-step. Short version:
+step-by-step. Quickest path — from this repo:
+
+```bash
+make install TARGET=../your-project APP_NAME=myapi APP_PORT=8080
+```
+
+That copies the snippets in, wires up the consumer Makefile, and prints
+the URLs. Then rename the `app:` service in the generated
+`docker-compose.traefik.yml` to match your real service, and run
+`make up` in the consumer project.
+
+Manual three-step alternative:
 
 1. Copy `snippets/traefik.mk` and `snippets/docker-compose.traefik.yml` into
    the consumer repo.

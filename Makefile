@@ -16,6 +16,8 @@ help:
 	@echo "  make logs      Tail Traefik logs"
 	@echo "  make status    Show hub status and routed apps"
 	@echo "  make lint      Validate every compose file in the repo"
+	@echo "  make install TARGET=<path>  Install snippets into a consumer project"
+	@echo "                              (optional: APP_NAME=<name> APP_PORT=<port>)"
 	@echo ""
 	@echo "Dashboard: https://traefik.localhost (when up)"
 
@@ -74,6 +76,14 @@ status:
 	@echo "Containers labeled for Traefik on network '$(NETWORK)':"
 	@docker ps --filter "network=$(NETWORK)" --filter "label=traefik.enable=true" \
 	  --format '  - {{.Names}}  ({{.Image}})' || true
+
+.PHONY: install
+install:
+	@if [ -z "$(TARGET)" ]; then \
+	  echo "Usage: make install TARGET=<path-to-consumer-project> [APP_NAME=<name>] [APP_PORT=<port>]"; \
+	  exit 1; \
+	fi
+	@APP_NAME='$(APP_NAME)' APP_PORT='$(APP_PORT)' ./scripts/install.sh '$(TARGET)'
 
 .PHONY: lint
 lint:

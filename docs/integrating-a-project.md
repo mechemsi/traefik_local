@@ -11,7 +11,30 @@ reachable at `<app>.localhost` when the hub is running and at
 - Your project has a `docker-compose.yml` that publishes the service port
   (e.g. `ports: ["3000:3000"]`) — this is what the fallback mode uses.
 
-## Steps
+## Quick install (recommended)
+
+From a clone of the hub repo, point the installer at your project:
+
+```bash
+make install TARGET=../your-project APP_NAME=myapi APP_PORT=8080
+```
+
+That copies both snippets in, creates a Makefile (or appends to an
+existing one) with `APP_NAME`, `APP_PORT`, and `include traefik.mk`, and
+prints the URLs for routed and fallback modes. Re-running is safe — it
+detects an existing `include traefik.mk` and skips Makefile changes, and
+prompts before overwriting snippet files.
+
+You can also run the script directly:
+
+```bash
+/path/to/traefik_local/scripts/install.sh ../your-project
+```
+
+After the installer runs, do step 2 below (rename the `app:` service in
+the override) and skip the rest. Step 3 is already handled.
+
+## Manual steps
 
 ### 1. Copy the two snippet files into your project
 
