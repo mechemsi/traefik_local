@@ -21,12 +21,9 @@ services:
       #
       # To override (e.g. custom domain, multiple hostnames), uncomment:
       # - traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)
-      # Routers without an explicit entrypoints label attach to all
-      # entrypoints. The hub's entrypoint-level redirect moves HTTP to
-      # HTTPS automatically, so the default is what you want. Only
-      # uncomment below if you need to pin this router to a specific
-      # entrypoint (e.g. HTTPS-only, no plain HTTP path at all):
-      # - traefik.http.routers.${APP_NAME}.entrypoints=websecure
+      # The hub serves plain HTTP only (a single `web` entrypoint on :80).
+      # Routers without an `entrypoints=` label attach to it automatically,
+      # so no entrypoint label is needed here.
       - traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}
     networks:
       - proxy

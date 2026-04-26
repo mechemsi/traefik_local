@@ -17,7 +17,7 @@
 # Behavior:
 #   - If a container named 'traefik' is running, compose is invoked with both
 #     the base file and docker-compose.traefik.yml (labels + proxy network).
-#     The app is reachable at https://$(APP_HOST) (the hub terminates TLS).
+#     The app is reachable at http://$(APP_HOST) (HTTP-only by design).
 #   - Otherwise, only the base compose is used and the app is reachable at
 #     http://localhost:$(APP_HOST_PORT) (assuming the base compose publishes it).
 
@@ -31,7 +31,7 @@ APP_HOST_PORT ?= $(APP_PORT)
 
 ifeq ($(TRAEFIK_RUNNING),true)
   COMPOSE_FILES := -f docker-compose.yml -f docker-compose.traefik.yml
-  ACCESS_URL    := https://$(APP_HOST)
+  ACCESS_URL    := http://$(APP_HOST)
   TRAEFIK_MODE  := routed via Traefik
 else
   COMPOSE_FILES := -f docker-compose.yml

@@ -1,6 +1,6 @@
 ---
 name: traefik-integrate-project
-description: Use when a developer asks to wire a dockerized project into a local Traefik reverse-proxy hub, route a service at a friendly *.localhost hostname, add a project to the proxy/Traefik dev hub, or set up Traefik for a docker-compose app. Symptoms include the project having a docker-compose.yml without traefik.mk or docker-compose.traefik.yml, and the developer wanting URLs like https://myapp.localhost instead of localhost:3000.
+description: Use when a developer asks to wire a dockerized project into a local Traefik reverse-proxy hub, route a service at a friendly *.localhost hostname, add a project to the proxy/Traefik dev hub, or set up Traefik for a docker-compose app. Symptoms include the project having a docker-compose.yml without traefik.mk or docker-compose.traefik.yml, and the developer wanting URLs like http://myapp.localhost instead of localhost:3000.
 ---
 
 # Wire a project into the local Traefik hub
@@ -10,7 +10,8 @@ description: Use when a developer asks to wire a dockerized project into a local
 Operator-mode integration: detect the project's compose layout, run the
 hub's installer, patch the override to the actual service, verify
 preconditions, and bring it up. Designed for the hub at
-[github.com/mechemsi/traefik_local](https://github.com/mechemsi/traefik_local).
+[github.com/mechemsi/traefik_local](https://github.com/mechemsi/traefik_local)
+(HTTP-only — no TLS, no cert setup).
 
 **REQUIRED BACKGROUND:** Read `_shared/SNIPPET-CONTRACT.md` in this
 skill's parent directory before starting. It documents the
@@ -27,10 +28,10 @@ Triggers (any of):
   developer wants a friendly hostname.
 
 When NOT to use:
-- Production / non-local Traefik. This skill targets a local dev hub
-  with mkcert TLS for `*.localhost`.
+- Production / non-local Traefik. This skill targets a local HTTP-only
+  dev hub for `*.localhost`.
 - Modifying the hub itself (adding middleware, debugging routes,
-  regenerating certs) → use `traefik-hub-maintain` instead.
+  resetting dashboard auth) → use `traefik-hub-maintain` instead.
 
 ## The workflow
 
@@ -82,7 +83,7 @@ About to:
   - rename `app:` → `<service>` in docker-compose.traefik.yml
   - set Host() rule on the override (because container_name not set in base)
   - ensure docker network `proxy` exists
-  - run `make up` and verify https://<host> responds
+  - run `make up` and verify http://<host> responds
 Proceed?
 ```
 
@@ -153,8 +154,7 @@ docker inspect -f '{{.State.Running}}' traefik 2>/dev/null
 ```
 
 If the hub is stopped and the developer wants routed mode, point them
-at `cd "$HUB" && make up` (which itself requires `make certs` first if
-they've never run it). Don't run `make up` in the hub repo without
+at `cd "$HUB" && make up`. Don't run `make up` in the hub repo without
 asking — it's their hub.
 
 ### 6. Bring it up + verify
@@ -168,29 +168,27 @@ Expected `traefik-info` output in routed mode:
 ```
 Traefik: running
 Mode:    routed via Traefik
-Access:  https://<APP_HOST>
+Access:  http://<APP_HOST>
 ```
 
 Verify routing reaches the app:
 ```bash
-curl -k -sS -o /dev/null -w '%{http_code}\n' https://${APP_HOST}
+curl -sS -o /dev/null -w '%{http_code}\n' http://${APP_HOST}
 # 200 = working. 404 = labels didn't take (most likely service-name
 # mismatch in the override — re-check step 4.1).
 ```
-
-`-k` is required because mkcert's CA might not be trusted by curl even
-when browsers trust it.
 
 ## Common mistakes
 
 | Mistake | Symptom | Fix |
 |---|---|---|
-| Forgot to rename `app:` in override | 404 at `https://<host>` after `make up` | `docker compose config` shows two services, only one labeled. Edit override. |
+| Forgot to rename `app:` in override | 404 at `http://<host>` after `make up` | `docker compose config` shows two services, only one labeled. Edit override. |
 | `APP_PORT` set to host port | 502 Bad Gateway from Traefik | `APP_PORT` is the **in-container** port. Swap to the right side of `ports: ["X:Y"]`. |
 | `APP_NAME` = compose service name (`web`, `app`) | Router collisions across projects | Use directory basename. Multiple consumers all routing `app.localhost` is the failure. |
 | Used defaultRule without `container_name:` | Routes at `<project>-<service>-1.localhost` | Add the explicit `Host()` rule (preferred) or set `container_name:` on base service. |
 | `proxy` network missing | `network proxy not found` at compose up | `make network` in hub repo, or `docker network create proxy`. |
-| Hub not running, expected `https://<host>` to work | Connection refused | Fallback mode is `http://localhost:${APP_HOST_PORT}`. Either start the hub or use the fallback URL. |
+| Hub not running, expected `http://<host>` to work | Connection refused | Fallback mode is `http://localhost:${APP_HOST_PORT}`. Either start the hub or use the fallback URL. |
+| Browser auto-upgrades to `https://<host>` | `ERR_SSL_PROTOCOL_ERROR` or "connection refused" on :443 | Chrome/Edge cache HSTS for hosts they previously served over HTTPS. Clear at `chrome://net-internals/#hsts` ("Delete domain security policies"). |
 | Multi-service project, used the single-service template | Some services unrouted, label conflicts | Skip `traefik.mk`'s `APP_NAME` plumbing. Hand-write the override using map-form labels + YAML merge-keys (see `_shared/SNIPPET-CONTRACT.md`). |
 | Edited labels on running container, expected hot-reload | Old routing persists | Compose doesn't push label updates. Run `docker compose up -d` to recreate the service. |
 
@@ -202,5 +200,5 @@ when browsers trust it.
 | Install | `APP_NAME=<x> APP_PORT=<y> "$HUB/scripts/install.sh" "$PWD"` |
 | Verify merge | `docker compose -f docker-compose.yml -f docker-compose.traefik.yml config` |
 | Bring up | `make up && make traefik-info` |
-| Verify routing | `curl -k https://${APP_HOST}` |
+| Verify routing | `curl http://${APP_HOST}` |
 | Network bootstrap | `cd "$HUB" && make network` |

@@ -21,9 +21,11 @@ Juggling local ports across many projects gets old. With the hub running:
   browsers (Chrome, Firefox, Edge) per RFC 6761 — no `/etc/hosts` edits.
   On Windows 11, make sure the host is patched past the Nov 2025
   cumulative rollup to avoid the KB5066835 loopback HTTP/2 regression.
-- `*.localhost` is served over HTTPS with a locally-trusted mkcert
-  cert; HTTP auto-redirects to HTTPS. See
-  [`docs/https.md`](docs/https.md).
+- HTTP-only by design. Local trust-store dance with mkcert is too much
+  friction for the value; consumer routers serve plain HTTP at
+  `http://<app>.localhost`. Browser secure-context features (service
+  workers, WebCrypto, etc.) are unavailable as a result — if you need
+  them, add HTTPS back yourself.
 
 ## Quickstart
 
@@ -49,25 +51,6 @@ silently dropped. `.env` is gitignored, so your hash never enters git.
 
 `make up` will fail fast with a helpful message if `DASHBOARD_AUTH`
 isn't set.
-
-### First-time setup: TLS certs
-
-The hub serves `*.localhost` over HTTPS using a locally-trusted mkcert
-cert. **You'll install mkcert once on Windows *and* once in WSL** so
-both your browser (Windows-side) and CLI tools (WSL-side) trust the
-same root CA. Then `make certs` generates the leaf cert.
-
-Quickstart on WSL once mkcert is set up on both sides:
-
-```bash
-make certs        # generate the *.localhost wildcard cert
-```
-
-`make up` refuses to start if the cert files are missing. **First-time
-on this machine?** [`docs/https.md`](docs/https.md) has a copy-paste
-quickstart block that walks Windows + WSL setup end-to-end (including
-sharing the CA via `WSLENV` so you only generate it once). Run that
-once per machine.
 
 ### Bring it up
 
@@ -124,8 +107,10 @@ override is evaluated at up-time, not runtime).
 - **Container up but `*.localhost` 404s** — check labels with
   `docker inspect <container> | grep traefik` and confirm the container is on
   the `proxy` network (`make status`).
-- **Cert not trusted** — see [`docs/https.md`](docs/https.md) one-time
-  setup. The CA has to be installed in both Windows and WSL.
+- **Browser sends `https://`** — Chrome/Edge cache HSTS for hosts they
+  previously served over HTTPS. If you used the hub's earlier HTTPS
+  setup, clear HSTS for the affected `.localhost` hosts at
+  `chrome://net-internals/#hsts` ("Delete domain security policies").
 
 ## Claude Code skills
 
@@ -139,8 +124,8 @@ describe.
   service name + ports, runs `install.sh`, patches the override,
   verifies the route.
 - `traefik-hub-maintain` — common edits + diagnostics inside the hub
-  repo (add CORS / basicauth / compress middleware, regenerate certs,
-  reset dashboard auth, triage routed-but-404 containers).
+  repo (add CORS / basicauth / compress middleware, reset dashboard
+  auth, triage routed-but-404 containers).
 
 Install once per machine:
 
@@ -155,7 +140,7 @@ reverses it.
 
 ## Scope
 
-This repo is deliberately small: local-only, minimal middleware chains.
-HTTPS via mkcert is wired in (see [`docs/https.md`](docs/https.md));
-HTTP requests auto-redirect to HTTPS. No auth on consumer routers by
-default. Everything stays local-only.
+This repo is deliberately small: local-only, HTTP-only, minimal
+middleware chains. No HTTPS by design — the trust-store setup for
+local TLS is more friction than it's worth for a dev hub. No auth on
+consumer routers by default. Everything stays local-only.

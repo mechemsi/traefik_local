@@ -124,6 +124,6 @@ Done. Next:
        docker network create proxy   # or 'make network' in the hub repo
   3. cd $TARGET && make up
 
-Hub running? https://$APP_NAME.localhost
+Hub running? http://$APP_NAME.localhost
 Hub down?    http://localhost:$APP_PORT  (fallback)
 EOF

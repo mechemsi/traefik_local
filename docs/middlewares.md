@@ -57,9 +57,9 @@ Optionally exclude content types or set a minimum response size:
 ## Per-service BasicAuth
 
 Put a login wall in front of a single service (e.g. `pgadmin`, an
-internal dashboard). Because the hub terminates TLS, BasicAuth
-credentials are encrypted in transit even in local dev — no plaintext
-passwords on the wire.
+internal dashboard). The hub is HTTP-only, so basicauth credentials
+travel as base64 over plaintext on the loopback interface. Acceptable
+for local-only dev; **never** reuse the same password in production.
 
 ```yaml
 labels:

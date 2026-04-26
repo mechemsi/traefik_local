@@ -1,6 +1,6 @@
 ---
 name: traefik-hub-maintain
-description: Use when working inside a local Traefik hub repository (the one shipping snippets/traefik.mk and a top-level docker-compose.yml with a traefik: service) and the developer asks to add a middleware (CORS, basicauth, retry, compress) to a routed consumer, regenerate local certs, fix dashboard auth, debug a routed-but-404 container, troubleshoot the proxy network, or extend the hub's docs/snippets. Also use for v3 label-syntax questions like IPAllowList vs IPWhiteList or `$$` doubling in compose label values.
+description: Use when working inside a local Traefik hub repository (the one shipping snippets/traefik.mk and a top-level docker-compose.yml with a traefik: service) and the developer asks to add a middleware (CORS, basicauth, retry, compress) to a routed consumer, fix dashboard auth, debug a routed-but-404 container, troubleshoot the proxy network, or extend the hub's docs/snippets. Also use for v3 label-syntax questions like IPAllowList vs IPWhiteList or `$$` doubling in compose label values.
 ---
 
 # Maintain the local Traefik hub
@@ -9,14 +9,15 @@ description: Use when working inside a local Traefik hub repository (the one shi
 
 Hub-side companion to `traefik-integrate-project`. Covers two flows:
 
-1. **Common edits** — adding middleware to a consumer, regenerating
-   certs, resetting dashboard auth, lint-after-edit.
-2. **Diagnostics** — triaging a routed-but-404 container, cert-not-trusted
-   reports, label-syntax bugs.
+1. **Common edits** — adding middleware to a consumer, resetting
+   dashboard auth, lint-after-edit.
+2. **Diagnostics** — triaging a routed-but-404 container, label-syntax
+   bugs, network-membership issues.
 
 Out of scope: structural rewrites of the hub (new entrypoints, new
-providers, swapping the `defaultRule`). Those are repo-shaped decisions
-that should go through brainstorming + a PR review, not a skill.
+providers, swapping the `defaultRule`, adding HTTPS back). Those are
+repo-shaped decisions that should go through brainstorming + a PR
+review, not a skill.
 
 **REQUIRED BACKGROUND:** Read `_shared/SNIPPET-CONTRACT.md` in this
 skill's parent directory. The diagnostics flows assume you understand
@@ -27,12 +28,11 @@ container-name trap, and v3 label gotchas.
 
 Triggers (any of):
 - Working in a directory containing `docker-compose.yml` with a
-  `traefik:` service AND `snippets/traefik.mk` AND
-  `dynamic/`. (Distinguishes the hub from a consumer.)
+  `traefik:` service AND `snippets/traefik.mk`. (Distinguishes the
+  hub from a consumer.)
 - "add a CORS middleware to <consumer>"
 - "put basicauth in front of <service>"
 - "add compression / retry to <route>"
-- "regenerate the local certs" / "the cert is expired"
 - "the dashboard wants a password I don't know"
 - "this container is up but I get 404 at `<name>.localhost`"
 - "Traefik isn't picking up my labels"
@@ -40,7 +40,7 @@ Triggers (any of):
 
 When NOT to use:
 - Wiring a new project into the hub → `traefik-integrate-project`.
-- Production Traefik. This skill assumes the local mkcert-based hub.
+- Production Traefik. This skill assumes the local HTTP-only hub.
 
 ## Pre-flight (every flow)
 
@@ -51,7 +51,6 @@ catches most "why isn't this working" before it gets weird:
 # In hub repo
 make status                # hub running? what's labeled?
 [ -f .env ] && grep -q DASHBOARD_AUTH .env || echo "WARN: .env missing DASHBOARD_AUTH"
-[ -f certs/localhost.pem ] && [ -f certs/localhost-key.pem ] || echo "WARN: certs missing — make certs"
 docker network inspect proxy >/dev/null 2>&1 || echo "WARN: proxy network missing — make network"
 ```
 
@@ -74,7 +73,7 @@ labels:
   - traefik.http.routers.api.middlewares=api-cors@docker
   - traefik.http.middlewares.api-cors.headers.accessControlAllowMethods=GET,POST,PUT,DELETE,OPTIONS
   - traefik.http.middlewares.api-cors.headers.accessControlAllowHeaders=Content-Type,Authorization
-  - traefik.http.middlewares.api-cors.headers.accessControlAllowOriginList=https://web.localhost,https://app.localhost
+  - traefik.http.middlewares.api-cors.headers.accessControlAllowOriginList=http://web.localhost,http://app.localhost
   - traefik.http.middlewares.api-cors.headers.accessControlAllowCredentials=true
   - traefik.http.middlewares.api-cors.headers.addVaryHeader=true
 ```
@@ -106,23 +105,9 @@ Compose runs variable interpolation on label values. A bare `$2y$05$...`
 is read as the unset variable `$2y` and silently dropped. Doubling is
 mandatory.
 
-The hub terminates TLS, so basicauth credentials are encrypted in
-transit even on local dev — no plaintext passwords on the wire.
-
-### Regenerate certs
-
-```bash
-make certs   # mkcert-based; refuses to run if mkcert missing
-```
-
-If `mkcert` isn't installed, the target prints install instructions
-and exits non-zero. Don't try to install mkcert from the skill — it
-modifies the system trust store and (on WSL) needs to be installed in
-both Windows and WSL. Point the developer at `docs/https.md` for the
-one-time setup.
-
-After regeneration: `make restart` to pick up the new cert. Browsers
-may need a restart to clear cached cert state.
+The hub is HTTP-only — basicauth credentials travel as base64 over
+plaintext on the loopback interface. Acceptable for local-only dev;
+**never** reuse the same password in production.
 
 ### Reset dashboard auth
 
@@ -189,7 +174,7 @@ Order of investigation (cheapest to most invasive):
    wasn't renamed to match the base compose.
 
 4. **Traefik sees the router?** Check the dashboard at
-   `https://traefik.localhost` (HTTP Routers). If the router is
+   `http://traefik.localhost` (HTTP Routers). If the router is
    listed, the labels are valid; the issue is upstream (port wrong,
    service down, network unreachable from Traefik). If the router is
    missing, Traefik rejected the labels — check `make logs` for parse
@@ -200,16 +185,16 @@ Order of investigation (cheapest to most invasive):
    the **in-container** port the service listens on, not the
    host-published port from `ports:`.
 
-### Cert-not-trusted
+### Browser tries `https://` and fails
 
-Almost always one of:
-
-- mkcert's CA not installed in the browser's trust store. Run
-  `mkcert -install` once per machine. On WSL, also install in Windows
-  (mkcert's CA needs to live in both — `docs/https.md` covers this).
-- Firefox: uses its own trust store. `mkcert -install` handles it but
-  Firefox needs a restart.
-- Cert expired. Regenerate with `make certs` and `make restart`.
+The hub serves HTTP only. If a browser auto-upgrades to `https://` and
+shows `ERR_SSL_PROTOCOL_ERROR` or "connection refused" on :443, it's
+HSTS caching. Chrome/Edge stick with `https://` for any host they
+previously saw served over HTTPS. Clear at
+`chrome://net-internals/#hsts` ("Delete domain security policies"),
+input the affected `<host>.localhost`, retry. Firefox has the
+equivalent in Settings → Privacy & Security → Clear Data → Site
+Settings, or `about:preferences#privacy` → Manage Data.
 
 ### Labels look right but Traefik ignores them
 
@@ -231,8 +216,8 @@ Two known causes:
 | Forgot to double `$` in label / .env value | basicauth always fails / dashboard locks out | `sed 's/\$/\$\$/g'` the value, restart. |
 | Edited labels expecting hot-reload | Old behavior persists | `docker compose up -d` to recreate. |
 | Used `*` in `accessControlAllowOriginList` | CORS preflight fails | List exact origins, or use `…OriginListRegex`. |
-| Ran `mkcert -install` only in WSL on Windows host | Browser shows "not trusted" | Install mkcert + run `mkcert -install` in both Windows and WSL. |
-| Made a structural change to the hub via this skill | Out-of-scope churn | Stop. Discuss the design first; this skill is for common edits + diagnostics only. |
+| Browser auto-upgrades to `https://` after hub HTTPS removal | `ERR_SSL_PROTOCOL_ERROR` | HSTS cache. Clear at `chrome://net-internals/#hsts`. |
+| Made a structural change to the hub via this skill (HTTPS, new entrypoints, etc.) | Out-of-scope churn | Stop. Discuss the design first; this skill is for common edits + diagnostics only. |
 | Skipped pre-flight, debugged a stopped hub | "Why is nothing routing?" | `make status` first, every session. |
 
 ## Quick reference

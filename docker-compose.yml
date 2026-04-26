@@ -13,15 +13,8 @@ services:
       - --providers.docker.exposedByDefault=false   # only route explicitly labeled services
       - --providers.docker.network=proxy             # always use the shared network
       - --providers.docker.defaultRule=Host(`{{ normalize .Name }}.localhost`)
-      # --- Provider: File (TLS + dynamic config) ---
-      - --providers.file.directory=/etc/traefik/dynamic
-      - --providers.file.watch=true
-      # --- Entrypoints ---
+      # --- Entrypoint (HTTP-only by design — see README "Scope") ---
       - --entrypoints.web.address=:80
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
-      - --entrypoints.websecure.address=:443
-      - --entrypoints.websecure.http.tls=true
       # --- Logs ---
       - --log.level=INFO
       - --accesslog=true
@@ -31,12 +24,9 @@ services:
       # --- Dashboard ---
       - --api.dashboard=true
     ports:
-      - "80:80"       # HTTP traffic (redirects to HTTPS)
-      - "443:443"     # HTTPS traffic
+      - "80:80"       # HTTP traffic
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./dynamic:/etc/traefik/dynamic:ro
-      - ./certs:/etc/traefik/certs:ro
     networks:
       - proxy
     labels:

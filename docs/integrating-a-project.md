@@ -64,8 +64,8 @@ needs three labels:
 No explicit router `rule=` is required. If you want a hostname different
 from the container name (custom domain, extra aliases), uncomment the
 `routers.${APP_NAME}.rule=Host(...)` line in the template. You do **not**
-need an `entrypoints` label — routers without one attach to all
-entrypoints, and the hub's entrypoint-level redirect handles HTTP→HTTPS.
+need an `entrypoints` label — the hub has a single `web` entrypoint on
+:80 and routers attach to all entrypoints by default.
 
 ### 3. Wire `traefik.mk` into your Makefile
 
@@ -102,7 +102,7 @@ You should see either:
 ```
 Traefik: running
 Mode:    routed via Traefik
-Access:  https://myapp.localhost
+Access:  http://myapp.localhost
 ```
 
 ...or the fallback variant with `http://localhost:3000`.
@@ -120,18 +120,13 @@ override only gets layered on when the hub is up. That means:
   will route through the internal network regardless, and a published host
   port doesn't hurt.
 
-## HTTPS in routed mode
+## HTTP-only by design
 
-When the hub is up, consumer routers are served at
-`https://<app>.localhost` with a locally-trusted mkcert cert. HTTP is
-redirected to HTTPS at the hub's entrypoint, so consumers do **not**
-need `tls=true` or `entrypoints=websecure` labels — a router with no
-explicit `entrypoints` label attaches to all entrypoints, and the
-entrypoint-level redirect takes care of the rest. No cert generation in
-the consumer repo either: the hub's wildcard cert covers `*.localhost`.
-When the hub is down, fallback mode serves plain HTTP on
-`localhost:<APP_HOST_PORT>` exactly as before. One-time cert setup lives
-in [`https.md`](https.md).
+The hub serves plain HTTP on `:80` with no TLS termination. Both routed
+mode and fallback mode use `http://`. No certs to manage, no trust
+stores, no `https.md` to read. If you need browser secure-context
+features (service workers, WebCrypto, etc.) you'll need to add HTTPS
+yourself — out of scope for this hub.
 
 ## Multiple services in one project
 
