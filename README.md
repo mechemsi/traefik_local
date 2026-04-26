@@ -52,15 +52,21 @@ isn't set.
 
 ### First-time setup: TLS certs
 
-Before the first `make up`, generate the local wildcard cert:
+The hub serves `*.localhost` over HTTPS using a locally-trusted mkcert
+cert. **You'll install mkcert once on Windows *and* once in WSL** so
+both your browser (Windows-side) and CLI tools (WSL-side) trust the
+same root CA. Then `make certs` generates the leaf cert.
+
+Quickstart on WSL once mkcert is set up on both sides:
 
 ```bash
-make certs
+make certs        # generate the *.localhost wildcard cert
 ```
 
-`make up` refuses to start if the cert files are missing. The full
-procedure — installing mkcert, sharing the CA between Windows and WSL,
-and Firefox specifics — is in [`docs/https.md`](docs/https.md). Run that
+`make up` refuses to start if the cert files are missing. **First-time
+on this machine?** [`docs/https.md`](docs/https.md) has a copy-paste
+quickstart block that walks Windows + WSL setup end-to-end (including
+sharing the CA via `WSLENV` so you only generate it once). Run that
 once per machine.
 
 ### Bring it up

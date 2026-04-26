@@ -17,6 +17,43 @@ HTTP: service workers, `crypto.subtle` (WebCrypto), WebAuthn, the async
 clipboard API, geolocation, sensors, and most of the "powerful features"
 list. Useful the first time you try to test one of those locally.
 
+## Quickstart (WSL2 + Windows)
+
+The whole setup, scan-and-execute. Each block is one terminal. Sections
+below explain *why* each command exists.
+
+**1. Windows (PowerShell, run as your user):**
+
+```powershell
+winget install FiloSottile.mkcert
+choco install nss                        # provides certutil.exe for Firefox trust
+mkcert -install                          # CA → Windows trust store + Firefox NSS
+setx WSLENV "$env:WSLENV`:CAROOT/up"     # share CA path into WSL
+wsl --shutdown                           # restart WSL to pick up WSLENV
+```
+
+**2. WSL (this terminal):**
+
+```bash
+sudo apt install -y mkcert libnss3-tools
+mkcert -install                          # uses shared CAROOT, adds to Linux trust
+cd ~/traefik
+make certs                               # generate the *.localhost wildcard cert
+make up                                  # bring the hub up
+```
+
+**3. Verify:**
+
+```bash
+curl -sI https://traefik.localhost | head -1   # should be 200 or 401, no -k flag needed
+open https://traefik.localhost                  # browser, no warnings
+```
+
+If you only need CLI trust (no browser), skip step 1 entirely and run
+only the WSL block. If you don't use Firefox, you can skip
+`choco install nss` and `libnss3-tools` — but installing them is cheaper
+than debugging cert warnings later.
+
 ## Why mkcert, not Let's Encrypt
 
 `.localhost` is reserved by [RFC 6761 §6.3](https://datatracker.ietf.org/doc/html/rfc6761#section-6.3).
