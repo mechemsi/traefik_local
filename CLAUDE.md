@@ -21,6 +21,14 @@ scope" below.
 - Hub-up/hub-down toggle in `snippets/traefik.mk` is evaluated at
   **make-time**, not container runtime. Flipping requires re-running
   `make up` in the consumer.
+- Three consumer snippets, not two: `snippets/traefik.mk`,
+  `snippets/docker-compose.traefik.yml` (routed overlay — labels +
+  proxy network, no ports), `snippets/docker-compose.fallback.yml`
+  (fallback overlay — `ports:` only). The Makefile picks which overlay
+  to apply based on hub state. Consumer base `docker-compose.yml` must
+  NOT declare `ports:` for the web-facing service — compose appends
+  override ports to base, so a base-level entry would publish in both
+  modes and re-introduce host-port collisions across consumers.
 - `.env` holds `DASHBOARD_AUTH` (gitignored). Compose interpolation
   requires `$` to be **doubled** in label and `.env` values:
   `htpasswd -nB user | sed -e 's/\$/\$\$/g'`.
@@ -47,14 +55,17 @@ scope" below.
 - Always: `make lint && make restart` and verify
   `curl -sI http://traefik.localhost` returns 401.
 
-### Snippets (`snippets/traefik.mk`, `snippets/docker-compose.traefik.yml`)
+### Snippets (`snippets/traefik.mk`, `snippets/docker-compose.traefik.yml`, `snippets/docker-compose.fallback.yml`)
 - Update `skills/_shared/SNIPPET-CONTRACT.md` whenever variable names,
   defaults, or behavior change. The shared doc is what both skills
   load as required background.
 - Update `docs/integrating-a-project.md` if the change is
-  developer-facing (new var, changed default, new label).
+  developer-facing (new var, changed default, new label, new overlay).
 - Update `examples/whoami/` if the snippet shape changes (whoami is
-  the lint target — `make lint` runs it).
+  the lint target — `make lint` exercises both routed and fallback
+  merges). Keep `examples/whoami/traefik.mk` in sync with
+  `snippets/traefik.mk` — it's a copy, not a symlink, and goes stale
+  silently.
 - `make lint` after.
 
 ### Makefile

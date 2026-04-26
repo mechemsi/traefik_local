@@ -1,0 +1,4 @@
+services:
+  whoami:
+    ports:
+      - "${APP_HOST_PORT}:${APP_PORT}"

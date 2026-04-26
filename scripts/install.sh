@@ -82,6 +82,7 @@ copy_snippet() {
 
 copy_snippet "traefik.mk"
 copy_snippet "docker-compose.traefik.yml"
+copy_snippet "docker-compose.fallback.yml"
 
 # --- Makefile wiring ---
 MK="$TARGET/Makefile"
@@ -118,12 +119,18 @@ fi
 cat <<EOF
 
 Done. Next:
-  1. Open $TARGET/docker-compose.traefik.yml and rename the 'app:' service key
-     to match the service name in your base docker-compose.yml.
-  2. Make sure the proxy network exists on this machine:
+  1. Rename the 'app:' service key to match your base docker-compose.yml in
+     BOTH overlays:
+       - $TARGET/docker-compose.traefik.yml   (routed mode: labels + proxy)
+       - $TARGET/docker-compose.fallback.yml  (hub-down mode: host port)
+  2. Remove any 'ports:' block for the web-facing service from your base
+     docker-compose.yml — port publishing now lives in the fallback overlay.
+     If host:container differ (e.g. ports: ["8081:80"]), set
+     APP_HOST_PORT=8081 in your Makefile above 'include traefik.mk'.
+  3. Make sure the proxy network exists on this machine:
        docker network create proxy   # or 'make network' in the hub repo
-  3. cd $TARGET && make up
+  4. cd $TARGET && make up
 
 Hub running? http://$APP_NAME.localhost
-Hub down?    http://localhost:$APP_PORT  (fallback)
+Hub down?    http://localhost:$APP_PORT  (fallback; APP_HOST_PORT if set)
 EOF

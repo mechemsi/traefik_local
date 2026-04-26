@@ -47,21 +47,26 @@ When NOT to use:
 ### 1. Pre-flight detection
 
 Locate the hub repo. Default `~/traefik`; if absent, ask the developer
-for the path. Confirm by checking for `snippets/traefik.mk` and
-`snippets/docker-compose.traefik.yml`.
+for the path. Confirm by checking for `snippets/traefik.mk`,
+`snippets/docker-compose.traefik.yml`, and
+`snippets/docker-compose.fallback.yml`.
 
 Read the consumer's base `docker-compose.yml`. Extract:
 
 - **Service name** — the top-level key under `services:`. If multiple
   services, ask which one is the web-facing target. (Multi-service is a
   separate flow — see `_shared/SNIPPET-CONTRACT.md` "Multi-service
-  consumers" and write the override by hand.)
+  consumers" and write the overlays by hand.)
 - **Container port** — what the service listens on inside the
   container. Inferred from the right side of `ports: ["X:Y"]` (Y), the
   service's `EXPOSE` if no `ports:`, or asked if ambiguous. This is
   `APP_PORT`.
 - **Host port** — the left side of `ports: ["X:Y"]` (X). This is
   `APP_HOST_PORT`. Set explicitly only when it differs from `APP_PORT`.
+- **Has `ports:` block?** — if yes, it must be **removed** from the base
+  compose in step 4 (port publishing moves to
+  `docker-compose.fallback.yml`). Capture host:container first so
+  `APP_HOST_PORT`/`APP_PORT` are right; then delete.
 - **`container_name:` set?** — determines hostname strategy below.
 
 Compute:
@@ -80,8 +85,10 @@ Print one consolidated plan and ask once before mutating files:
 About to:
   - run <hub>/scripts/install.sh <pwd> with APP_NAME=<x> APP_PORT=<y>
   - set APP_HOST_PORT=<n> in the Makefile  (only if host port ≠ container port)
+  - remove `ports:` from base docker-compose.yml  (only if present)
   - rename `app:` → `<service>` in docker-compose.traefik.yml
-  - set Host() rule on the override (because container_name not set in base)
+  - rename `app:` → `<service>` in docker-compose.fallback.yml
+  - set Host() rule on the routed overlay (because container_name not set in base)
   - ensure docker network `proxy` exists
   - run `make up` and verify http://<host> responds
 Proceed?
@@ -89,9 +96,14 @@ Proceed?
 
 Don't ask per-step. Coarse confirmation is the design.
 
-Include `APP_HOST_PORT` in the plan whenever step 1 detected a
-host-published port that differs from the container port — it's the
-variable most likely to be wrong silently in fallback mode.
+Surface two items in the plan whenever step 1 detected them — they're
+the silent-failure modes:
+
+- The `ports:` removal from base compose (destructive edit on the
+  developer's file; they should see it before you do it).
+- `APP_HOST_PORT` whenever the host port differs from the container
+  port — the variable most likely to be wrong silently in fallback
+  mode.
 
 ### 3. Install snippets
 
@@ -102,10 +114,10 @@ HUB=/path/to/traefik_local
 APP_NAME=<name> APP_PORT=<container-port> "$HUB/scripts/install.sh" "$PWD"
 ```
 
-The installer copies `traefik.mk` + `docker-compose.traefik.yml`,
-creates or appends to `Makefile` with the include block, and prompts
-before overwriting existing snippet files. It auto-detects local vs
-remote source.
+The installer copies `traefik.mk`, `docker-compose.traefik.yml`, and
+`docker-compose.fallback.yml`, creates or appends to `Makefile` with
+the include block, and prompts before overwriting existing snippet
+files. It auto-detects local vs remote source.
 
 If the consumer has an existing `Makefile`, the installer detects an
 existing `include traefik.mk` and skips the Makefile change. If
@@ -113,32 +125,46 @@ variables (`APP_NAME`, `APP_HOST_PORT`) need to be set, append them
 above the `include` line yourself — installer doesn't manage them.
 
 **The installer is intentionally dumb about your service name.** It
-copies `docker-compose.traefik.yml` verbatim from the template, with
-`app:` as the service key. It does **not** know what your real service
-is called and will not rename it. That's step 4 below — your job, not
-the installer's.
+copies both overlays verbatim from the template, each with `app:` as
+the service key. It does **not** know what your real service is called
+and will not rename it. That's step 4 below — your job, not the
+installer's.
 
-### 4. Patch the override
+### 4. Patch base compose + both overlays
 
-The installer copies the template with `app:` as the service key. Edit
-`docker-compose.traefik.yml`:
+a. **Remove `ports:` from base `docker-compose.yml`.** If the
+   web-facing service has a `ports:` block, delete it. Port publishing
+   now lives in `docker-compose.fallback.yml`. Skipping this leaves a
+   host-port publish in *both* modes (compose appends override `ports:`
+   to base, doesn't replace) — defeats the routed/fallback split and
+   risks port collisions when the hub is up. See
+   `_shared/SNIPPET-CONTRACT.md` "Ports policy" for the rationale.
 
-1. **Rename `app:` → actual service name** from the base compose. This
-   is the #1 silent failure: if you forget, compose merges `app:` as a
-   new (label-less) service and your real service stays unrouted.
-   Verify after with `docker compose config` — the merged output should
-   show your service with all the Traefik labels attached.
-2. **Hostname strategy** (see `_shared/SNIPPET-CONTRACT.md` for the
-   full container-name trap):
-   - If `container_name:` is set on the base service AND matches
-     `APP_NAME`: leave the override as shipped, defaultRule will
-     produce `${APP_NAME}.localhost`.
-   - Otherwise (typical case with compose v2): uncomment the explicit
-     rule line:
-     ```yaml
-     - traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)
-     ```
-3. Set `APP_HOST_PORT` in the consumer Makefile if it differs from
+b. **Edit `docker-compose.traefik.yml`** (routed overlay):
+   1. **Rename `app:` → actual service name** from the base compose.
+      This is the #1 silent failure: if you forget, compose merges
+      `app:` as a new (label-less) service and your real service stays
+      unrouted. Verify after with `docker compose config` — the merged
+      output should show your service with all the Traefik labels
+      attached.
+   2. **Hostname strategy** (see `_shared/SNIPPET-CONTRACT.md` for the
+      full container-name trap):
+      - If `container_name:` is set on the base service AND matches
+        `APP_NAME`: leave the overlay as shipped, defaultRule will
+        produce `${APP_NAME}.localhost`.
+      - Otherwise (typical case with compose v2): uncomment the
+        explicit rule line:
+        ```yaml
+        - traefik.http.routers.${APP_NAME}.rule=Host(`${APP_HOST}`)
+        ```
+
+c. **Edit `docker-compose.fallback.yml`** (fallback overlay):
+   1. **Rename `app:` → actual service name** — same rename as the
+      routed overlay, same silent-failure mode if forgotten (a phantom
+      `app:` service gets the published port and your real service
+      stays unpublished).
+
+d. Set `APP_HOST_PORT` in the consumer Makefile if it differs from
    `APP_PORT`. Otherwise omit — defaults to `APP_PORT`.
 
 ### 5. Verify preconditions
@@ -175,21 +201,30 @@ Verify routing reaches the app:
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' http://${APP_HOST}
 # 200 = working. 404 = labels didn't take (most likely service-name
-# mismatch in the override — re-check step 4.1).
+# mismatch in docker-compose.traefik.yml — re-check step 4.b.1).
 ```
+
+If the developer wants to sanity-check fallback mode (or the hub is
+down), the URL is `http://localhost:${APP_HOST_PORT}` after `make up`.
+A `Connection refused` there usually means the `app:` rename in
+`docker-compose.fallback.yml` was forgotten — `docker compose config`
+will show two services, only one with `ports:`.
 
 ## Common mistakes
 
 | Mistake | Symptom | Fix |
 |---|---|---|
-| Forgot to rename `app:` in override | 404 at `http://<host>` after `make up` | `docker compose config` shows two services, only one labeled. Edit override. |
-| `APP_PORT` set to host port | 502 Bad Gateway from Traefik | `APP_PORT` is the **in-container** port. Swap to the right side of `ports: ["X:Y"]`. |
+| Forgot to rename `app:` in routed overlay | 404 at `http://<host>` after `make up` (hub running) | `docker compose config` shows two services, only one labeled. Edit `docker-compose.traefik.yml`. |
+| Forgot to rename `app:` in fallback overlay | `Connection refused` at `http://localhost:<port>` (hub down) | `docker compose config` shows two services, only one with `ports:`. Edit `docker-compose.fallback.yml`. |
+| Left `ports:` in base compose | Host port published in routed mode too; possible `bind: address already in use` if another consumer is also up | Delete `ports:` from base. Compose appends override `ports:` to base — there's no override-time removal. |
+| `APP_PORT` set to host port | 502 Bad Gateway from Traefik | `APP_PORT` is the **in-container** port. Swap to the right side of `ports: ["X:Y"]` (the original base mapping you captured in step 1). |
 | `APP_NAME` = compose service name (`web`, `app`) | Router collisions across projects | Use directory basename. Multiple consumers all routing `app.localhost` is the failure. |
 | Used defaultRule without `container_name:` | Routes at `<project>-<service>-1.localhost` | Add the explicit `Host()` rule (preferred) or set `container_name:` on base service. |
-| `proxy` network missing | `network proxy not found` at compose up | `make network` in hub repo, or `docker network create proxy`. |
-| Hub not running, expected `http://<host>` to work | Connection refused | Fallback mode is `http://localhost:${APP_HOST_PORT}`. Either start the hub or use the fallback URL. |
+| `proxy` network missing | `network proxy not found` at compose up (routed mode) | `make network` in hub repo, or `docker network create proxy`. |
+| Hub not running, expected `http://<host>` to work | Connection refused on `<host>.localhost` | Fallback URL is `http://localhost:${APP_HOST_PORT}`. Either start the hub or use the fallback URL. |
+| Ran `docker compose up` directly (no `make`) | App container runs but unreachable from host | Neither overlay applied. Use `make up`, or `docker compose -f docker-compose.yml -f docker-compose.fallback.yml up`. |
 | Browser auto-upgrades to `https://<host>` | `ERR_SSL_PROTOCOL_ERROR` or "connection refused" on :443 | Chrome/Edge cache HSTS for hosts they previously served over HTTPS. Clear at `chrome://net-internals/#hsts` ("Delete domain security policies"). |
-| Multi-service project, used the single-service template | Some services unrouted, label conflicts | Skip `traefik.mk`'s `APP_NAME` plumbing. Hand-write the override using map-form labels + YAML merge-keys (see `_shared/SNIPPET-CONTRACT.md`). |
+| Multi-service project, used the single-service template | Some services unrouted, label conflicts | Skip `traefik.mk`'s `APP_NAME` plumbing. Hand-write the overlays using map-form labels + YAML merge-keys (see `_shared/SNIPPET-CONTRACT.md`). |
 | Edited labels on running container, expected hot-reload | Old routing persists | Compose doesn't push label updates. Run `docker compose up -d` to recreate the service. |
 
 ## Quick reference
@@ -198,7 +233,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://${APP_HOST}
 |---|---|
 | Detect base compose | `cat docker-compose.yml` then read services + ports |
 | Install | `APP_NAME=<x> APP_PORT=<y> "$HUB/scripts/install.sh" "$PWD"` |
-| Verify merge | `docker compose -f docker-compose.yml -f docker-compose.traefik.yml config` |
+| Verify merge (routed) | `docker compose -f docker-compose.yml -f docker-compose.traefik.yml config` |
+| Verify merge (fallback) | `docker compose -f docker-compose.yml -f docker-compose.fallback.yml config` |
 | Bring up | `make up && make traefik-info` |
-| Verify routing | `curl http://${APP_HOST}` |
+| Verify routing (hub up) | `curl http://${APP_HOST}` |
+| Verify routing (hub down) | `curl http://localhost:${APP_HOST_PORT}` |
 | Network bootstrap | `cd "$HUB" && make network` |

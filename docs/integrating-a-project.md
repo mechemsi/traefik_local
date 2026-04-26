@@ -8,8 +8,10 @@ reachable at `<app>.localhost` when the hub is running and at
 ## Prerequisites
 
 - The hub is set up: `make network && make up` in this repo.
-- Your project has a `docker-compose.yml` that publishes the service port
-  (e.g. `ports: ["3000:3000"]`) — this is what the fallback mode uses.
+- Your project has a `docker-compose.yml` for the service you want to
+  route. It should **not** declare `ports:` for the web-facing service —
+  port publishing for fallback mode is handled by a separate overlay
+  (`docker-compose.fallback.yml`) that the installer drops in.
 
 ## Quick install (recommended)
 
@@ -19,11 +21,13 @@ From a clone of the hub repo, point the installer at your project:
 make install TARGET=../your-project APP_NAME=myapi APP_PORT=8080
 ```
 
-That copies both snippets in, creates a Makefile (or appends to an
-existing one) with `APP_NAME`, `APP_PORT`, and `include traefik.mk`, and
-prints the URLs for routed and fallback modes. Re-running is safe — it
-detects an existing `include traefik.mk` and skips Makefile changes, and
-prompts before overwriting snippet files.
+That copies all three snippets in (`traefik.mk`,
+`docker-compose.traefik.yml`, `docker-compose.fallback.yml`), creates a
+Makefile (or appends to an existing one) with `APP_NAME`, `APP_PORT`,
+and `include traefik.mk`, and prints the URLs for routed and fallback
+modes. Re-running is safe — it detects an existing `include traefik.mk`
+and skips Makefile changes, and prompts before overwriting snippet
+files.
 
 You can also run the script directly:
 
@@ -31,29 +35,44 @@ You can also run the script directly:
 /path/to/traefik_local/scripts/install.sh ../your-project
 ```
 
-After the installer runs, do step 2 below (rename the `app:` service in
-the override) and skip the rest. Step 3 is already handled.
+After the installer runs, do step 2 below (rename `app:` in **both**
+overlays, remove `ports:` from base) and skip the rest. Step 3 is
+already handled.
 
 ## Manual steps
 
-### 1. Copy the two snippet files into your project
+### 1. Copy the three snippet files into your project
 
 ```bash
 cp /home/domas/traefik/snippets/traefik.mk \
    /home/domas/traefik/snippets/docker-compose.traefik.yml \
+   /home/domas/traefik/snippets/docker-compose.fallback.yml \
    your-project/
 ```
 
-### 2. Edit `docker-compose.traefik.yml`
+### 2. Remove `ports:` from your base `docker-compose.yml`
 
-Open the override and rename the service key `app:` to match the service in
-your base compose file. For example, if your base file has `web:`, change it
-to `web:`.
+If your web-facing service has a `ports:` block, delete it. Capture the
+host:container mapping first (`ports: ["8081:80"]` → `APP_HOST_PORT=8081`,
+`APP_PORT=80`) so step 3 can re-add the publish via the fallback overlay.
+
+Why: compose merges `ports:` *additively*, not by replacement. A base
+`ports:` block would publish in both routed and fallback modes,
+re-introducing the host-port collisions across consumers that the
+routed/fallback split exists to prevent. Port publishing now lives only
+in `docker-compose.fallback.yml`.
+
+### 3. Edit both overlays
+
+**`docker-compose.traefik.yml`** (routed mode — labels + proxy network):
+
+Rename the service key `app:` to match the service in your base compose
+file. For example, if your base file has `web:`, change it to `web:`.
 
 The hub's Docker provider is configured with
 `--providers.docker.defaultRule=Host(`{{ normalize .Name }}.localhost`)`, so
 any container with `traefik.enable=true` on the `proxy` network is
-automatically reachable at `<container-name>.localhost`. The override only
+automatically reachable at `<container-name>.localhost`. The overlay only
 needs three labels:
 
 - `traefik.enable=true`
@@ -61,13 +80,20 @@ needs three labels:
 - `traefik.http.services.${APP_NAME}.loadbalancer.server.port=${APP_PORT}`
   (Traefik can't guess the upstream port when a container exposes several.)
 
-No explicit router `rule=` is required. If you want a hostname different
-from the container name (custom domain, extra aliases), uncomment the
+No explicit router `rule=` is required if `container_name:` matches your
+desired hostname. Otherwise (the typical case with compose v2, where
+containers get `<project>-<service>-N` names) uncomment the
 `routers.${APP_NAME}.rule=Host(...)` line in the template. You do **not**
 need an `entrypoints` label — the hub has a single `web` entrypoint on
 :80 and routers attach to all entrypoints by default.
 
-### 3. Wire `traefik.mk` into your Makefile
+**`docker-compose.fallback.yml`** (hub-down mode — host port publish):
+
+Rename the same `app:` key to match your real service name. Forgetting
+this is silent: compose creates a phantom `app:` service that gets the
+publish, and your real service stays unreachable from the host.
+
+### 4. Wire `traefik.mk` into your Makefile
 
 At the top of your project's `Makefile`:
 
@@ -90,7 +116,7 @@ logs: ; $(COMPOSE) logs -f
 `traefik.mk` defines `COMPOSE` with the correct `-f` flags based on whether
 the hub is running.
 
-### 4. Run it
+### 5. Run it
 
 ```bash
 make up
@@ -109,16 +135,27 @@ Access:  http://myapp.localhost
 
 ## Mental model
 
-There is **one** base compose file in your project, Traefik-unaware. The
-override only gets layered on when the hub is up. That means:
+There is **one** base compose file in your project — Traefik-unaware,
+port-publish-unaware. Two overlays live alongside it; `traefik.mk`
+picks one based on whether the hub container is running:
 
-- You can develop with the hub off and your project still works normally.
+- Hub up → `docker-compose.traefik.yml` adds labels + proxy network.
+  Traefik reaches the container over the internal network. Nothing is
+  published to the host.
+- Hub down → `docker-compose.fallback.yml` publishes
+  `${APP_HOST_PORT}:${APP_PORT}` so the app is reachable at
+  `http://localhost:${APP_HOST_PORT}`.
+
+That means:
+
+- You can develop with the hub off and your project still works
+  normally — through the fallback URL.
 - Turning the hub on/off requires re-running `make up` in the project
   (compose applies overrides at up-time, not runtime).
-- The base compose should keep its `ports:` block so fallback mode actually
-  publishes the service. The override doesn't need to remove it — Traefik
-  will route through the internal network regardless, and a published host
-  port doesn't hurt.
+- The base compose has no `ports:` block. Bypassing `make` (e.g.
+  `docker compose up` directly) loads neither overlay, and the
+  container won't be reachable from the host. That's expected — `make`
+  is the supported entrypoint.
 
 ## HTTP-only by design
 
@@ -179,13 +216,25 @@ and Traefik labels are strings. Router names must be unique per project.
 
 ## Pitfalls
 
-- **Service name mismatch.** If you forget to rename `app:` in the override,
-  compose merges it as a new service and your real service gets no labels.
-  `docker compose config` will show the truth.
-- **`APP_PORT` is the in-container port.** That is the port Traefik uses as
-  the upstream target, and it matches what your service binds to inside the
-  container. If your base compose publishes a different host port
-  (`ports: ["8081:80"]`), set `APP_HOST_PORT=8081` so the fallback URL
-  points at the right port.
-- **Missing `proxy` network.** Run `make network` in the hub repo once per
-  machine, or add `docker network create proxy` to your own bootstrap.
+- **Service name mismatch — both overlays.** If you forget to rename
+  `app:` in `docker-compose.traefik.yml`, the labels go to a phantom
+  service and your real service stays unrouted (404 in routed mode).
+  Same mistake in `docker-compose.fallback.yml` means the host-port
+  publish goes to the phantom and your real service stays unreachable
+  (Connection refused in fallback mode). `docker compose config` shows
+  the truth in both cases.
+- **Left `ports:` in base compose.** The host port gets published in
+  routed mode too — defeats the routed/fallback split and risks a
+  collision (`bind: address already in use`) when other consumers are
+  also up. Compose appends override `ports:` to base; there's no
+  override-time removal. Delete `ports:` from base when you wire this in.
+- **`APP_PORT` is the in-container port.** That is the port Traefik
+  uses as the upstream target, and it matches what your service binds
+  to inside the container. The fallback overlay publishes
+  `${APP_HOST_PORT}:${APP_PORT}` — set `APP_HOST_PORT` only when the
+  host port should differ (e.g. avoiding a `:80` collision with another
+  consumer, set `APP_HOST_PORT=8081`).
+- **Missing `proxy` network.** Run `make network` in the hub repo once
+  per machine, or add `docker network create proxy` to your own
+  bootstrap. Only routed mode needs this — fallback mode runs without
+  it.

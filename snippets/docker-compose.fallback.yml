@@ -1,0 +1,21 @@
+# docker-compose.fallback.yml — host-port publishing for hub-down mode.
+#
+# `traefik.mk` applies this overlay (instead of docker-compose.traefik.yml)
+# when the Traefik hub container isn't running. It publishes the service's
+# in-container port (${APP_PORT}) on the host as ${APP_HOST_PORT} so the
+# app stays reachable at http://localhost:${APP_HOST_PORT}.
+#
+# Why a separate overlay (instead of `ports:` in the base compose):
+# Compose merges `ports:` additively — keeping a port in the base would
+# publish it in *both* modes, defeating the point of the routed/fallback
+# split and risking host-port collisions across consumers when the hub is
+# up. Putting `ports:` here means routed mode never publishes anything;
+# Traefik reaches the container over the internal `proxy` network.
+#
+# Rename the `app:` key below to match the service name in your base
+# docker-compose.yml. Same service-name rename as docker-compose.traefik.yml.
+
+services:
+  app:
+    ports:
+      - "${APP_HOST_PORT}:${APP_PORT}"

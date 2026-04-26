@@ -15,11 +15,18 @@
 #     logs: ; $(COMPOSE) logs -f
 #
 # Behavior:
-#   - If a container named 'traefik' is running, compose is invoked with both
-#     the base file and docker-compose.traefik.yml (labels + proxy network).
+#   - If a container named 'traefik' is running, compose is invoked with the
+#     base file and docker-compose.traefik.yml (labels + proxy network).
 #     The app is reachable at http://$(APP_HOST) (HTTP-only by design).
-#   - Otherwise, only the base compose is used and the app is reachable at
-#     http://localhost:$(APP_HOST_PORT) (assuming the base compose publishes it).
+#     No host port is published in this mode — Traefik reaches the
+#     container over the internal `proxy` network.
+#   - Otherwise, the base file is layered with docker-compose.fallback.yml,
+#     which publishes $(APP_PORT) on the host as $(APP_HOST_PORT). The app
+#     is reachable at http://localhost:$(APP_HOST_PORT).
+#
+#   The base docker-compose.yml should NOT declare `ports:` for the
+#   web-facing service — port publishing belongs in the fallback overlay.
+#   See docker-compose.fallback.yml for the rationale.
 
 TRAEFIK_CONTAINER ?= traefik
 TRAEFIK_RUNNING   := $(shell docker inspect -f '{{.State.Running}}' $(TRAEFIK_CONTAINER) 2>/dev/null)
@@ -34,12 +41,12 @@ ifeq ($(TRAEFIK_RUNNING),true)
   ACCESS_URL    := http://$(APP_HOST)
   TRAEFIK_MODE  := routed via Traefik
 else
-  COMPOSE_FILES := -f docker-compose.yml
+  COMPOSE_FILES := -f docker-compose.yml -f docker-compose.fallback.yml
   ACCESS_URL    := http://localhost:$(APP_HOST_PORT)
   TRAEFIK_MODE  := fallback (direct port)
 endif
 
-export APP_NAME APP_HOST APP_PORT
+export APP_NAME APP_HOST APP_PORT APP_HOST_PORT
 
 COMPOSE := docker compose $(COMPOSE_FILES)
 

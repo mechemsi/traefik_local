@@ -70,9 +70,12 @@ install:
 lint:
 	@echo "Linting hub compose..."
 	@DASHBOARD_AUTH=lint-placeholder $(COMPOSE) -f docker-compose.yml config --quiet
-	@echo "Linting example: whoami..."
-	@cd examples/whoami && APP_NAME=whoami APP_HOST=whoami.localhost APP_PORT=80 \
+	@echo "Linting example: whoami (routed mode)..."
+	@cd examples/whoami && APP_NAME=whoami APP_HOST=whoami.localhost APP_PORT=80 APP_HOST_PORT=8081 \
 	  docker compose -f docker-compose.yml -f docker-compose.traefik.yml config --quiet
+	@echo "Linting example: whoami (fallback mode)..."
+	@cd examples/whoami && APP_NAME=whoami APP_HOST=whoami.localhost APP_PORT=80 APP_HOST_PORT=8081 \
+	  docker compose -f docker-compose.yml -f docker-compose.fallback.yml config --quiet
 	@echo "All compose files parse cleanly."
 
 # Symlink each skill in ./skills/ into ~/.claude/skills/ so Claude Code

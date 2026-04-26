@@ -3,5 +3,7 @@ services:
     image: traefik/whoami:latest
     container_name: whoami-example
     restart: unless-stopped
-    ports:
-      - "8081:80"
+    # No `ports:` here. Port publishing belongs to docker-compose.fallback.yml,
+    # which traefik.mk layers on only when the hub is down. In routed mode,
+    # Traefik reaches the container via the internal `proxy` network — no
+    # host port needed.
