@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compose-lint:
+    name: Lint compose files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # GitHub-hosted ubuntu-latest runners ship Docker + the compose plugin.
+      # `make lint` runs `docker compose config --quiet` against both the hub
+      # and the whoami example.
+      - name: Verify docker compose is available
+        run: docker compose version
+      - name: make lint
+        run: make lint
+
+  shellcheck:
+    name: Shellcheck install.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          severity: warning
+          # Only the one script for now; if more are added under scripts/
+          # the default config (recursive scan) will pick them up.
+          scandir: ./scripts
+
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks needs full history to scan past commits
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          # No untrusted user input is interpolated into run: commands
+          # anywhere in this workflow. GITHUB_TOKEN is a workflow-scoped
+          # token, safe to expose via env. Public repos do not need a
+          # GITLEAKS_LICENSE secret.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
