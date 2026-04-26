@@ -121,6 +121,32 @@ override is evaluated at up-time, not runtime).
 - **Cert not trusted** — see [`docs/https.md`](docs/https.md) one-time
   setup. The CA has to be installed in both Windows and WSL.
 
+## Claude Code skills
+
+Two skills ship with the hub for teams using Claude Code. Both live in
+[`skills/`](skills/) and are version-controlled with the snippets they
+describe.
+
+- `traefik-integrate-project` — operator-mode wire-up of a consumer
+  project. Auto-invoked when a developer asks to route a project at
+  `<name>.localhost`, add an app to the local Traefik, etc. Detects
+  service name + ports, runs `install.sh`, patches the override,
+  verifies the route.
+- `traefik-hub-maintain` — common edits + diagnostics inside the hub
+  repo (add CORS / basicauth / compress middleware, regenerate certs,
+  reset dashboard auth, triage routed-but-404 containers).
+
+Install once per machine:
+
+```bash
+make install-skills
+```
+
+This symlinks each skill into `~/.claude/skills/`, so `git pull` of
+this repo flows updates through automatically. Restart Claude Code
+once after installing for it to pick them up. `make uninstall-skills`
+reverses it.
+
 ## Scope
 
 This repo is deliberately small: local-only, minimal middleware chains.
