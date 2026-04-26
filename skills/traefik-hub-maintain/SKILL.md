@@ -224,9 +224,9 @@ Two known causes:
 
 | Task | Command |
 |---|---|
-| Pre-flight | `make status && ls certs/ && docker network inspect proxy` |
+| Pre-flight | `make status && docker network inspect proxy` |
 | Lint after edits | `make lint` |
-| Restart after cert/auth change | `make restart` |
+| Restart after auth change | `make restart` |
 | Inspect container labels | `docker inspect <c> --format '{{json .Config.Labels}}' \| jq` |
 | Inspect container networks | `docker inspect <c> --format '{{json .NetworkSettings.Networks}}' \| jq` |
 | See merged consumer compose | `docker compose -f docker-compose.yml -f docker-compose.traefik.yml config` |
