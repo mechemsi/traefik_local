@@ -1,7 +1,7 @@
 # ~/traefik/docker-compose.yml
 services:
   traefik:
-    image: traefik:v3.6.13
+    image: traefik:v3.6.14
     container_name: traefik
     restart: always
     user: "0:0"
