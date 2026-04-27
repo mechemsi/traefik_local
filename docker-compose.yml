@@ -3,7 +3,7 @@ services:
   traefik:
     image: traefik:v3.6.13
     container_name: traefik
-    restart: unless-stopped
+    restart: always
     user: "0:0"
     group_add:
       - "1001"
