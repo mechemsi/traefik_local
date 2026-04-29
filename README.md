@@ -62,6 +62,27 @@ open http://traefik.localhost
 
 Other targets: `make down`, `make logs`, `make status`, `make restart`.
 
+### Autostart on WSL boot (optional)
+
+Docker's `restart: always` policy alone has been unreliable on this
+host across WSL restarts. `scripts/autostart.sh` is a one-shot wrapper
+that waits for the Docker daemon, then runs `make restart` to force a
+clean cycle. Wire it into your `~/.bashrc` so the first shell after a
+WSL boot brings the hub up:
+
+```bash
+echo '[ -x "$HOME/traefik/scripts/autostart.sh" ] && "$HOME/traefik/scripts/autostart.sh" &' >> ~/.bashrc
+```
+
+A `/tmp` marker (`traefik-autostart.done`) keeps subsequent shells from
+re-running it; `/tmp` is wiped on WSL restart, so the next boot picks
+it up again. Output goes to `/tmp/traefik-autostart.log`. To re-run on
+demand, delete the marker and re-source `~/.bashrc` or invoke the
+script directly.
+
+For native Linux with systemd, prefer a unit file with
+`After=docker.service` instead — out of scope here.
+
 ## Adding a project to the hub
 
 See [`docs/integrating-a-project.md`](docs/integrating-a-project.md) for the

@@ -1,6 +1,6 @@
 ---
 name: traefik-hub-maintain
-description: Use when working inside a local Traefik hub repository (the one shipping snippets/traefik.mk and a top-level docker-compose.yml with a traefik: service) and the developer asks to add a middleware (CORS, basicauth, retry, compress) to a routed consumer, fix dashboard auth, debug a routed-but-404 container, troubleshoot the proxy network, or extend the hub's docs/snippets. Also use for v3 label-syntax questions like IPAllowList vs IPWhiteList or `$$` doubling in compose label values.
+description: Use when working inside a local Traefik hub repository (the one shipping snippets/traefik.mk and a top-level docker-compose.yml with a traefik: service) and the developer asks to add a middleware (CORS, basicauth, retry, compress) to a routed consumer, fix dashboard auth, debug a routed-but-404 container, troubleshoot the proxy network, set up autostart on WSL boot, or extend the hub's docs/snippets. Also use for v3 label-syntax questions like IPAllowList vs IPWhiteList or `$$` doubling in compose label values.
 ---
 
 # Maintain the local Traefik hub
@@ -36,6 +36,8 @@ Triggers (any of):
 - "the dashboard wants a password I don't know"
 - "this container is up but I get 404 at `<name>.localhost`"
 - "Traefik isn't picking up my labels"
+- "the hub doesn't come back up after I reboot / restart WSL"
+- "make traefik start on system boot"
 - v3 label-syntax questions (`IPWhiteList`, `$$` doubling, etc.)
 
 When NOT to use:
@@ -122,6 +124,36 @@ make restart
 
 The `$$` doubling is the same compose-interpolation rule as label
 values. `.env` is gitignored — the hash never enters git.
+
+### Autostart the hub on WSL boot
+
+`scripts/autostart.sh` is the supported entry point. It waits up to 60s
+for the Docker daemon, then runs `make restart` (force-cycle, so any
+container left in a bad state from the previous session gets replaced).
+A `/tmp/traefik-autostart.done` marker makes it a no-op on subsequent
+shells in the same WSL session; `/tmp` clears on WSL restart, so the
+next boot re-runs it.
+
+Wire it via `~/.bashrc` (the user must do this — don't auto-edit shell
+profiles):
+
+```bash
+[ -x "$HOME/traefik/scripts/autostart.sh" ] && "$HOME/traefik/scripts/autostart.sh" &
+```
+
+The trailing `&` backgrounds it so shell startup isn't blocked by the
+docker-readiness poll. Logs land in `/tmp/traefik-autostart.log` —
+that's the first thing to read if the hub doesn't come up after a
+reboot.
+
+To re-trigger on demand without rebooting:
+```bash
+rm -f /tmp/traefik-autostart.done && "$HOME/traefik/scripts/autostart.sh"
+```
+
+This script is WSL-targeted. Native Linux with systemd should use a
+proper unit (`After=docker.service`, `ExecStart=/usr/bin/make -C
+/path/to/traefik up`) — that lives outside this skill.
 
 ### After any hub or snippet edit
 
@@ -232,3 +264,5 @@ Two known causes:
 | See merged consumer compose | `docker compose -f docker-compose.yml -f docker-compose.traefik.yml config` |
 | Tail Traefik logs | `make logs` |
 | Generate basicauth value | `htpasswd -nB <user> \| sed -e 's/\$/\$\$/g'` |
+| Force re-run of WSL autostart | `rm -f /tmp/traefik-autostart.done && scripts/autostart.sh` |
+| Read autostart log | `cat /tmp/traefik-autostart.log` |
